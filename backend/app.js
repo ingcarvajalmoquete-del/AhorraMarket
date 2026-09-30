@@ -41,7 +41,8 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 
 // Servir el frontend desde el mismo servidor
-const frontendPath = path.join(__dirname, "../frontend");
+// Servir el frontend desde el mismo servidor
+const frontendPath = path.join(__dirname, "public");
 
 app.use(express.static(frontendPath));
 
