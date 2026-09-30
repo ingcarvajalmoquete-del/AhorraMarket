@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://ahorramarket-production.up.railway.app/api";
+export const API_BASE_URL = `${window.location.origin}/api`;
 
 export const STORAGE_KEYS = {
   TOKEN: "chatbox_token",
