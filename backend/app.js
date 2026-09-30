@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -39,6 +40,17 @@ app.use("/api/sales", saleRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 
+// Servir el frontend desde el mismo servidor
+const frontendPath = path.join(__dirname, "../frontend");
+
+app.use(express.static(frontendPath));
+
+// Al entrar al dominio principal, mostrar el login
+app.get("/", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+// Rutas no encontradas y manejo de errores
 app.use(notFound);
 app.use(errorHandler);
 
