@@ -1,28 +1,96 @@
 const THEME_STORAGE_KEY = "chatbox_theme";
 const TOAST_DURATION_MS = 3200;
+const NOTIFICATION_EVENT = "app:notification";
 
-export function showToast(message) {
-  // Un único canal de actividad para todos los módulos.
-  // El módulo de notificaciones escucha este evento sin acoplarse a
-  // productos, clientes, empleados, ventas, gastos, etc.
-  document.dispatchEvent(new CustomEvent("app:notification", {
-    detail: {
-      message: String(message || ""),
-      timestamp: Date.now()
-    }
-  }));
+function classifyToast(message) {
+  const text = String(message || "").toLowerCase();
 
-  const toast = document.getElementById("toast");
-  if (!toast) return;
+  if (/(error|no se pudo|fall[oó]|no tienes|no encontrado|insuficiente|obligatorios|completa|mayor que cero|no puedes)/i.test(text)) {
+    return { type: "error", icon: "error", persist: false };
+  }
 
-  toast.textContent = message;
-  toast.classList.add("show");
+  if (/(eliminad|desactivad)/i.test(text)) {
+    return { type: "danger", icon: "delete", persist: true };
+  }
 
-  window.clearTimeout(showToast.timeoutId);
-  showToast.timeoutId = window.setTimeout(() => {
-    toast.classList.remove("show");
-  }, TOAST_DURATION_MS);
+  if (/(actualizad|editad)/i.test(text)) {
+    return { type: "info", icon: "edit", persist: true };
+  }
+
+  if (/(registrad|cread|agregad|activad|guardad|venta .*registrad|inventario actualizad)/i.test(text)) {
+    return { type: "success", icon: "check", persist: true };
+  }
+
+  return { type: "info", icon: "info", persist: false };
 }
+
+function createNotificationPayload(message, meta = {}) {
+  const classification = classifyToast(message);
+  if (!classification.persist && !meta.persist) return null;
+
+  const type = meta.type || classification.type;
+  const title = meta.title || (
+    type === "danger" ? "Registro eliminado" :
+    type === "info" ? "Registro actualizado" :
+    "Operación realizada"
+  );
+
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title,
+    message: String(message),
+    type,
+    icon: meta.icon || classification.icon,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+}
+
+export function showToast(message, meta = {}) {
+  const toast = document.getElementById("toast");
+  const text = String(message ?? "");
+  const classification = classifyToast(text);
+
+  const visualType = meta.type || classification.type;
+  const alertConfig = {
+    success: { title: "¡Éxito!", icon: "success" },
+    info: { title: "¡Actualizado!", icon: "info" },
+    danger: { title: "¡Eliminado!", icon: "success" },
+    warning: { title: "¡Atención!", icon: "warning" },
+    error: { title: "¡Error!", icon: "error" }
+  };
+
+  // Rukada usa SweetAlert2 para confirmar visualmente cada operación.
+  // Ahorra Market conserva ese comportamiento y además registra el evento en su historial.
+  if (window.Swal?.fire) {
+    const config = alertConfig[visualType] || alertConfig.info;
+    window.Swal.fire({
+      title: meta.title || config.title,
+      text,
+      icon: config.icon,
+      confirmButtonText: "Aceptar",
+      confirmButtonColor: "#1D2C9D",
+      allowOutsideClick: true,
+      customClass: { popup: "ahorra-swal-popup" }
+    });
+  } else if (toast) {
+    toast.textContent = text;
+    toast.dataset.type = visualType;
+    toast.classList.add("active");
+
+    window.clearTimeout(showToast.timeoutId);
+    showToast.timeoutId = window.setTimeout(() => {
+      toast.classList.remove("active");
+    }, TOAST_DURATION_MS);
+  }
+
+  const notification = createNotificationPayload(text, meta);
+  if (notification) {
+    window.dispatchEvent(new CustomEvent(NOTIFICATION_EVENT, { detail: notification }));
+  }
+}
+
+export { NOTIFICATION_EVENT };
 
 export function openModal(id) {
   document.getElementById(id)?.classList.add("open");

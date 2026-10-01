@@ -162,6 +162,7 @@ async function handleAddExpense() {
     setValue("gastoDescripcion", "");
     setValue("gastoMonto", "");
     if (message) message.textContent = "Gasto agregado correctamente.";
+    showToast("Gasto agregado correctamente.");
   } catch (error) {
     if (message) message.textContent = error.message;
   }

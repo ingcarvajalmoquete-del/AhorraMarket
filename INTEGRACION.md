@@ -1,52 +1,23 @@
-# Ahorra Market · Integración real de notificaciones Rukada
+# Integración Ahorra Market · Notificaciones Rukada
 
-Esta versión ya contiene la integración en el código que Express sirve en producción:
+1. Copia `frontend/src/assets/ahorra-market-logo.png` a la ruta equivalente de tu proyecto.
+2. Copia `frontend/src/css/notifications-rukada.css`.
+3. Aplica `AhorraMarket_notificaciones_rukada.patch` desde la raíz del repositorio:
 
-`backend/public/`
+```bash
+git apply AhorraMarket_notificaciones_rukada.patch
+```
 
-## Qué se modificó
+El centro de notificaciones escucha el evento global `app:notification`, emitido por `showToast()`. Por ello los módulos CRUD existentes no necesitan importar el centro de notificaciones: sus mensajes de éxito se convierten automáticamente en actividad persistente.
 
-- `backend/public/src/js/modules/notificationsModule.js`
-- `backend/public/src/js/modules/uiModule.js`
-- `backend/public/src/css/styles.css`
-- `backend/public/dashboard.html`
-- `backend/public/index.html`
-- `backend/public/src/css/login-pro.css`
-- `backend/public/src/assets/images/ahorra-market-logo.png`
+La implementación conserva la arquitectura actual, usa `localStorage`, limita el historial a 60 eventos y permite marcar individualmente, marcar todo como leído y limpiar el historial. El estilo toma como referencia visual la estructura de Rukada: panel desplegable, lista de altura fija/desplazable, iconos circulares, contador y estados de actividad.
 
-## Cómo funciona
-
-Los módulos existentes siguen usando `showToast()` después de sus operaciones.
-
-El flujo es:
-
-`CRUD → showToast() → app:notification → notificationsModule → campana`
-
-Por eso no se agregó una dependencia directa entre Productos, Clientes, Empleados, Usuarios, Ventas, Gastos e Inventario y el centro de notificaciones.
-
-## Operaciones capturadas
-
-La clasificación reconoce automáticamente mensajes de:
-
-- crear / registrar / agregar / activar
-- editar / actualizar / modificar
-- eliminar / borrar / desactivar
-- avisos, errores y validaciones
-
-El módulo identifica además el área correspondiente y la muestra como parte de la notificación.
-
-## Persistencia
-
-Las actividades se almacenan en `localStorage` del navegador, con un máximo de 60 registros. Se pueden marcar como leídas, marcar todas como leídas o limpiar el historial.
-
-## Logo
-
-El logo oficial está en:
-
-`backend/public/src/assets/images/ahorra-market-logo.png`
-
-y se muestra en el login y en el sidebar.
-
-## Nota sobre `window.confirm`
-
-La confirmación nativa que aparece al eliminar un registro es independiente del centro de notificaciones. Después de aceptar y completar la operación, el resultado aparece en la campana.
+### Operaciones cubiertas
+- Productos: crear, editar, eliminar.
+- Clientes: registrar, editar, eliminar.
+- Empleados: registrar, editar, eliminar.
+- Usuarios: crear, activar/desactivar, eliminar.
+- Ventas: registrar.
+- Gastos: agregar y eliminar.
+- Inventario: actualización manual.
+- Errores y validaciones que ya usan `showToast()`.

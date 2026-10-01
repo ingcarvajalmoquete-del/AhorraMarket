@@ -1,47 +1,39 @@
-# Ahorra Market — actualización real
+# Patch — Notificaciones profesionales para Ahorra Market
 
-Este paquete contiene el proyecto actualizado, no solamente un conjunto de archivos de ejemplo.
+Este paquete contiene únicamente los cambios necesarios para adaptar el patrón de
+notificaciones de Rukada a Ahorra Market sin cambiar la arquitectura.
 
-## Integrado
+## Aplicación
 
-- Centro de notificaciones profesional inspirado en Rukada.
-- Registro automático de operaciones mediante el evento global `app:notification`.
-- Creación, edición, eliminación y avisos de los módulos existentes.
-- Contador de pendientes.
-- Marcar individual / marcar todo como leído.
-- Limpiar historial.
-- Historial persistente en el navegador.
-- Modo claro y oscuro.
-- Logo oficial de Ahorra Market en login y sidebar.
+1. Reemplaza:
+   `frontend/src/js/modules/notificationsModule.js`
+   por el archivo de este paquete.
 
-## Importante
+2. Copia el contenido de:
+   `frontend/src/css/notifications.css.patch`
+   al final de:
+   `frontend/src/css/styles.css`
 
-La aplicación que sirve Express está en:
+3. No cambies `frontend/src/js/main.js`: ya inicializa `initNotificationsModule()`.
 
-`backend/public/`
+4. Actualiza `DOCUMENTACION_AHORRA_MARKET.md` agregando la sección 18 incluida en
+   `DOCUMENTACION_AHORRA_MARKET_NOTIFICACIONES.md`.
 
-No es necesario mover estos archivos a otra arquitectura.
+## Backend
 
-No se modificaron las rutas, controladores, servicios ni la base de datos del backend.
+No requiere cambios en backend, base de datos, rutas, JWT ni dependencias.
 
-## Ejecutar
+## Resultado
 
-Desde `backend`:
+- Dropdown profesional de notificaciones.
+- Alertas de stock bajo y sin existencias.
+- Avisos de ventas recientes.
+- Estado leído/no leído persistente en el navegador.
+- Marcar todo como leído.
+- Actualización manual.
+- Refresco automático cada 2 minutos mientras la pestaña está visible.
+- Responsive y compatible con tema claro/oscuro.
 
-```bash
-npm install
-npm start
-```
 
-La URL local depende del puerto configurado en `.env`.
-
-## Git
-
-Como el ZIP no incluye `.git` ni `node_modules`, si lo vas a usar sobre tu repositorio actual, copia los archivos actualizados dentro de tu carpeta del proyecto y ejecuta:
-
-```bash
-git status
-git add .
-git commit -m "feat: notificaciones profesionales y logo"
-git push origin main
-```
+### Notificaciones de operaciones
+Las operaciones exitosas de registrar, editar, eliminar, activar/desactivar, ventas e inventario se muestran con una alerta profesional y quedan almacenadas en el centro de notificaciones.
