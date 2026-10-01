@@ -1,0 +1,44 @@
+
+/* ==========================================================================
+   CENTRO DE NOTIFICACIONES · ESTILO RUKADA
+   ========================================================================== */
+.notif-wrap{position:relative}
+.notif-panel{
+    position:absolute;top:calc(100% + 12px);right:-10px;width:min(390px,calc(100vw - 28px));
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 24px 60px rgba(15,23,42,.18);overflow:hidden;
+    opacity:0;transform:translateY(-8px) scale(.985);pointer-events:none;
+    transition:.2s var(--ease);z-index:200;
+}
+.notif-panel.open{opacity:1;transform:none;pointer-events:auto}
+.rukada-notif-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 17px;border-bottom:1px solid var(--line);background:var(--surface)}
+.rukada-notif-head strong{display:block;font-size:14px;color:var(--ink);font-weight:700}
+.rukada-notif-head small{display:block;margin-top:2px;color:var(--muted);font-size:10.5px}
+.rukada-notif-head button,.rukada-notif-foot button{border:0;background:none;color:var(--g-600);font:600 10.5px Inter,sans-serif;cursor:pointer;padding:4px}
+.rukada-notif-head button:disabled,.rukada-notif-foot button:disabled{opacity:.45;cursor:default}
+.rukada-notif-list{max-height:360px;overflow-y:auto;padding:5px 0}
+.rukada-notif-item{position:relative;width:100%;display:flex;align-items:flex-start;gap:11px;text-align:left;border:0;border-bottom:1px solid var(--line-2);background:transparent;padding:12px 15px;cursor:pointer;color:var(--ink);transition:.16s}
+.rukada-notif-item:hover{background:var(--g-50)}
+.rukada-notif-item.is-read{opacity:.72}
+.rukada-notif-icon{width:42px;height:42px;flex:none;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:17px}
+.rukada-notif-icon.success{background:rgba(22,163,74,.12);color:#16a34a}
+.rukada-notif-icon.update{background:rgba(37,99,235,.12);color:#2563eb}
+.rukada-notif-icon.danger{background:rgba(220,38,38,.12);color:#dc2626}
+.rukada-notif-icon.warning{background:rgba(245,158,11,.14);color:#d97706}
+.rukada-notif-icon.info{background:var(--g-50);color:var(--g-600)}
+.rukada-notif-body{min-width:0;display:flex;flex-direction:column;gap:2px;padding-top:1px}
+.rukada-notif-body strong{font-size:12px;line-height:1.35;color:var(--ink);font-weight:700}
+.rukada-notif-body small{font-size:11px;line-height:1.45;color:var(--ink-2);white-space:normal}
+.rukada-notif-body em{font-size:10px;color:var(--muted-2);font-style:normal;margin-top:2px}
+.rukada-notif-unread{width:7px;height:7px;flex:none;border-radius:50%;background:var(--g-500);margin:6px 2px 0 auto;box-shadow:0 0 0 3px var(--g-50)}
+.rukada-notif-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:42px 20px;color:var(--muted)}
+.rukada-notif-empty span{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--g-50);color:var(--g-600);font-size:20px;font-weight:800;margin-bottom:10px}
+.rukada-notif-empty strong{font-size:13px;color:var(--ink)}
+.rukada-notif-empty small{font-size:11px;margin-top:3px}
+.rukada-notif-foot{display:flex;align-items:center;justify-content:space-between;padding:10px 15px;background:var(--line-2);color:var(--muted);font-size:10.5px}
+.notification-button{position:relative}
+.notification-button i{position:absolute;right:7px;top:7px;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px var(--surface);display:block}
+.notification-button i.seen{display:none}
+.notification-button i.has-notifications:after{content:attr(data-count);position:absolute;left:8px;bottom:4px;min-width:15px;height:15px;padding:0 4px;border-radius:20px;background:#ef4444;color:#fff;font:700 8px/15px Inter,sans-serif;text-align:center;box-shadow:0 2px 6px rgba(239,68,68,.35)}
+[data-theme="dark"] .notif-panel{box-shadow:0 24px 60px rgba(0,0,0,.42)}
+@media(max-width:560px){.notif-panel{position:fixed;top:64px;right:12px;width:min(390px,calc(100vw - 24px))}.rukada-notif-list{max-height:calc(100vh - 180px)}}

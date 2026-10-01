@@ -1,271 +1,166 @@
-import { productService } from "../services/productService.js";
-import { saleService } from "../services/saleService.js";
-import { formatCurrency } from "../utils/formatters.js";
-import { escapeHtml } from "../utils/validators.js";
+const STORAGE_KEY = "ahorra_market_notifications_v2";
+const MAX_ITEMS = 60;
 
-const MAX_NOTIFICATIONS = 8;
-const LOW_STOCK_LIMIT = 10;
+const ACTIONS = [
+  { key: "created", words: ["creado", "creada", "registrado", "registrada", "agregado", "agregada", "activado", "activada"] },
+  { key: "updated", words: ["actualizado", "actualizada", "editado", "editada", "modificado", "modificada"] },
+  { key: "deleted", words: ["eliminado", "eliminada", "borrado", "borrada", "desactivado", "desactivada"] },
+  { key: "warning", words: ["stock bajo", "agotado", "insuficiente", "no valido", "no válida", "no valida", "error"] }
+];
 
-let notificationCache = [];
-let unreadCount = 0;
+const ENTITY_MAP = [
+  ["producto", "Productos"], ["cliente", "Clientes"], ["empleado", "Empleados"],
+  ["usuario", "Usuarios"], ["venta", "Ventas"], ["gasto", "Control de gastos"],
+  ["inventario", "Inventario"], ["reporte", "Reportes"]
+];
 
-function getTimeLabel(dateValue) {
-  if (!dateValue) return "Ahora";
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return "Reciente";
+let notifications = loadNotifications();
 
-  const diff = Math.max(0, Date.now() - date.getTime());
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return "Ahora";
-  if (minutes < 60) return `Hace ${minutes} min`;
-  if (hours < 24) return `Hace ${hours} h`;
-  if (days === 1) return "Ayer";
-  if (days < 7) return `Hace ${days} días`;
-
-  return date.toLocaleDateString("es-DO", {
-    day: "2-digit",
-    month: "short"
-  });
-}
-
-function createNotification({ id, title, text, tone = "info", icon = "!" , time = null }) {
-  return { id, title, text, tone, icon, time };
-}
-
-async function buildNotifications() {
-  const [productsResult, salesResult] = await Promise.allSettled([
-    productService.getAll(),
-    saleService.getAll()
-  ]);
-
-  const products = productsResult.status === "fulfilled" && Array.isArray(productsResult.value)
-    ? productsResult.value
-    : [];
-
-  const sales = salesResult.status === "fulfilled" && Array.isArray(salesResult.value)
-    ? salesResult.value
-    : [];
-
-  const items = [];
-
-  const outOfStock = products.filter((product) => Number(product.stock) <= 0);
-  outOfStock.slice(0, 3).forEach((product) => {
-    items.push(createNotification({
-      id: `out-stock-${product.id}`,
-      title: `Sin existencias: ${product.name}`,
-      text: "Este producto necesita reposición.",
-      tone: "danger",
-      icon: "!",
-      time: null
-    }));
-  });
-
-  const lowStock = products
-    .filter((product) => Number(product.stock) > 0 && Number(product.stock) <= LOW_STOCK_LIMIT)
-    .sort((a, b) => Number(a.stock) - Number(b.stock));
-
-  lowStock.slice(0, 3).forEach((product) => {
-    items.push(createNotification({
-      id: `low-stock-${product.id}`,
-      title: `Stock bajo: ${product.name}`,
-      text: `Quedan ${product.stock} unidades disponibles.`,
-      tone: "warning",
-      icon: "!",
-      time: null
-    }));
-  });
-
-  const lastSale = sales[0];
-  if (lastSale) {
-    const saleDate = lastSale.created_at || lastSale.createdAt || lastSale.date || lastSale.sale_date;
-    items.push(createNotification({
-      id: `sale-${lastSale.id}`,
-      title: `Venta registrada #${lastSale.id}`,
-      text: `Total ${formatCurrency(lastSale.total)}.`,
-      tone: "success",
-      icon: "✓",
-      time: saleDate
-    }));
-  }
-
-  const previousSale = sales[1];
-  if (previousSale && sales.length > 1) {
-    const saleDate = previousSale.created_at || previousSale.createdAt || previousSale.date || previousSale.sale_date;
-    items.push(createNotification({
-      id: `sale-${previousSale.id}`,
-      title: `Venta reciente #${previousSale.id}`,
-      text: `Total ${formatCurrency(previousSale.total)}.`,
-      tone: "info",
-      icon: "↗",
-      time: saleDate
-    }));
-  }
-
-  if (items.length === 0) {
-    items.push(createNotification({
-      id: "system-ok",
-      title: "Todo en orden",
-      text: "No hay alertas nuevas en este momento.",
-      tone: "success",
-      icon: "✓"
-    }));
-  }
-
-  return items.slice(0, MAX_NOTIFICATIONS);
-}
-
-function readSeenIds() {
+function loadNotifications() {
   try {
-    return JSON.parse(localStorage.getItem("ahorramarket_notification_seen") || "[]");
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return Array.isArray(value) ? value.slice(0, MAX_ITEMS) : [];
   } catch {
     return [];
   }
 }
 
-function saveSeenIds(ids) {
-  localStorage.setItem(
-    "ahorramarket_notification_seen",
-    JSON.stringify(ids.slice(-50))
-  );
+function persist() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.slice(0, MAX_ITEMS)));
 }
 
-function updateBadge(dot) {
-  if (!dot) return;
-  dot.classList.toggle("seen", unreadCount === 0);
-  dot.setAttribute("aria-label", unreadCount ? `${unreadCount} notificaciones nuevas` : "Sin notificaciones nuevas");
+function escapeText(value) {
+  const div = document.createElement("div");
+  div.textContent = String(value ?? "");
+  return div.innerHTML;
 }
 
-function renderNotifications(panel, dot) {
-  const seenIds = new Set(readSeenIds());
-  unreadCount = notificationCache.filter((item) => !seenIds.has(item.id)).length;
-  updateBadge(dot);
+function classify(message) {
+  const text = String(message || "").trim();
+  const lower = text.toLowerCase();
+  const action = ACTIONS.find((item) => item.words.some((word) => lower.includes(word)));
+  const entity = ENTITY_MAP.find(([word]) => lower.includes(word));
+
+  let title = text || "Actividad del sistema";
+  let tone = "info";
+  let icon = "✓";
+  if (action?.key === "created") { tone = "success"; icon = "✓"; }
+  if (action?.key === "updated") { tone = "update"; icon = "↻"; }
+  if (action?.key === "deleted") { tone = "danger"; icon = "×"; }
+  if (action?.key === "warning") { tone = "warning"; icon = "!"; }
+
+  if (entity) {
+    const [word, module] = entity;
+    const actionLabel = action?.key === "created" ? "Registro creado" :
+      action?.key === "updated" ? "Registro actualizado" :
+      action?.key === "deleted" ? "Registro eliminado" :
+      action?.key === "warning" ? "Aviso del sistema" : "Actividad registrada";
+    title = `${actionLabel} · ${module}`;
+    // Keep the original toast as the detail so no context is lost.
+    if (lower.includes(word)) return { title, text, tone, icon, module };
+  }
+  return { title, text, tone, icon, module: "Sistema" };
+}
+
+function relativeTime(timestamp) {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return "Ahora mismo";
+  if (seconds < 60) return `Hace ${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Hace ${hours} h`;
+  return new Date(timestamp).toLocaleDateString("es-DO", { day: "2-digit", month: "short" });
+}
+
+function unreadCount() { return notifications.filter((item) => !item.read).length; }
+
+function render(panel, dot) {
+  const unread = unreadCount();
+  dot?.classList.toggle("seen", unread === 0);
+  dot?.classList.toggle("has-notifications", unread > 0);
+  dot?.setAttribute("data-count", unread > 99 ? "99+" : String(unread));
+
+  const list = notifications.length
+    ? notifications.map((item) => `
+      <button class="rukada-notif-item ${item.read ? "is-read" : "is-unread"}" data-notif-id="${escapeText(item.id)}">
+        <span class="rukada-notif-icon ${item.tone}">${escapeText(item.icon)}</span>
+        <span class="rukada-notif-body">
+          <strong>${escapeText(item.title)}</strong>
+          <small>${escapeText(item.text)}</small>
+          <em>${escapeText(relativeTime(item.timestamp))}</em>
+        </span>
+        ${item.read ? "" : '<i class="rukada-notif-unread" aria-label="No leída"></i>'}
+      </button>`).join("")
+    : `<div class="rukada-notif-empty"><span>✓</span><strong>Todo en orden</strong><small>No hay actividades nuevas.</small></div>`;
 
   panel.innerHTML = `
-    <div class="notif-head">
-      <div>
-        <strong>Notificaciones</strong>
-        <small>${unreadCount ? `${unreadCount} nuevas` : "Todo revisado"}</small>
-      </div>
-      <button type="button" class="notif-mark-all" data-notif-action="read-all">
-        Marcar todo leído
-      </button>
+    <div class="rukada-notif-head">
+      <div><strong>Notificaciones</strong><small>${unread ? `${unread} pendiente${unread === 1 ? "" : "s"}` : "Actividad reciente"}</small></div>
+      <button type="button" data-notif-action="read-all" ${unread ? "" : "disabled"}>Marcar todo leído</button>
     </div>
-
-    <div class="notif-list">
-      ${notificationCache.map((item) => {
-        const seen = seenIds.has(item.id);
-        return `
-          <article class="notif-item notif-${item.tone} ${seen ? "is-seen" : "is-unread"}" data-notif-id="${escapeHtml(String(item.id))}">
-            <span class="notif-icon" aria-hidden="true">${escapeHtml(item.icon)}</span>
-            <div class="notif-content">
-              <b>${escapeHtml(item.title)}</b>
-              <small>${escapeHtml(item.text)}</small>
-              <time>${escapeHtml(getTimeLabel(item.time))}</time>
-            </div>
-            ${seen ? "" : '<span class="notif-unread" aria-label="Nueva"></span>'}
-          </article>
-        `;
-      }).join("")}
-    </div>
-
-    <div class="notif-footer">
-      <span>Actualizado ahora</span>
-      <button type="button" data-notif-action="refresh">Actualizar</button>
-    </div>
-  `;
+    <div class="rukada-notif-list">${list}</div>
+    <div class="rukada-notif-foot">
+      <span>${notifications.length} actividad${notifications.length === 1 ? "" : "es"}</span>
+      <button type="button" data-notif-action="clear" ${notifications.length ? "" : "disabled"}>Limpiar historial</button>
+    </div>`;
 }
 
-async function refreshNotifications(panel, dot) {
-  panel.classList.add("is-loading");
-  try {
-    notificationCache = await buildNotifications();
-    renderNotifications(panel, dot);
-  } catch (error) {
-    console.error("No se pudieron cargar las notificaciones:", error);
-    notificationCache = [{
-      id: "notification-error",
-      title: "No se pudo actualizar",
-      text: "Revisa la conexión con la API e inténtalo nuevamente.",
-      tone: "danger",
-      icon: "!"
-    }];
-    renderNotifications(panel, dot);
-  } finally {
-    panel.classList.remove("is-loading");
-  }
+function addNotification(message) {
+  const item = classify(message);
+  if (!item.text) return;
+  // Avoid duplicating the same operation fired twice within 800 ms.
+  const duplicate = notifications[0] && notifications[0].text === item.text && Date.now() - notifications[0].timestamp < 800;
+  if (duplicate) return;
+  notifications.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: Date.now(), read: false, ...item });
+  notifications = notifications.slice(0, MAX_ITEMS);
+  persist();
 }
 
 export function initNotificationsModule() {
   const button = document.getElementById("notificationBtn");
   const panel = document.getElementById("notificationPanel");
   const dot = document.getElementById("notificationDot");
-
   if (!button || !panel) return;
 
   const close = () => {
     panel.classList.remove("open");
     button.setAttribute("aria-expanded", "false");
   };
+  const refresh = () => render(panel, dot);
 
-  const open = async () => {
-    panel.classList.add("open");
-    button.setAttribute("aria-expanded", "true");
-
-    if (!notificationCache.length) {
-      await refreshNotifications(panel, dot);
-    } else {
-      renderNotifications(panel, dot);
-    }
-  };
-
-  button.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    const willOpen = !panel.classList.contains("open");
-    if (willOpen) {
-      await open();
-    } else {
-      close();
-    }
+  document.addEventListener("app:notification", (event) => {
+    addNotification(event.detail?.message);
+    refresh();
   });
 
-  panel.addEventListener("click", async (event) => {
+  button.addEventListener("click", (event) => {
     event.stopPropagation();
+    const willOpen = !panel.classList.contains("open");
+    panel.classList.toggle("open", willOpen);
+    button.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) refresh();
+  });
 
-    const actionButton = event.target.closest("[data-notif-action]");
+  panel.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const action = event.target.closest("[data-notif-action]")?.dataset.notifAction;
     const item = event.target.closest("[data-notif-id]");
-
-    if (actionButton?.dataset.notifAction === "refresh") {
-      await refreshNotifications(panel, dot);
-      return;
+    if (action === "read-all") {
+      notifications.forEach((entry) => { entry.read = true; });
+      persist(); refresh(); return;
     }
-
-    if (actionButton?.dataset.notifAction === "read-all") {
-      saveSeenIds(notificationCache.map((notification) => notification.id));
-      renderNotifications(panel, dot);
-      return;
+    if (action === "clear") {
+      notifications = []; persist(); refresh(); return;
     }
-
-    if (item?.dataset.notifId) {
-      const seen = new Set(readSeenIds());
-      seen.add(item.dataset.notifId);
-      saveSeenIds([...seen]);
-      renderNotifications(panel, dot);
+    if (item) {
+      const found = notifications.find((entry) => entry.id === item.dataset.notifId);
+      if (found) { found.read = true; persist(); refresh(); }
     }
   });
 
   document.addEventListener("click", close);
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
-  });
-
-  // Primera carga silenciosa: el indicador queda listo sin abrir el panel.
-  refreshNotifications(panel, dot);
-
-  // Refresco periódico ligero; no modifica backend ni crea endpoints nuevos.
-  window.setInterval(() => {
-    if (!document.hidden) refreshNotifications(panel, dot);
-  }, 120000);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+  refresh();
+  window.setInterval(refresh, 30000);
 }

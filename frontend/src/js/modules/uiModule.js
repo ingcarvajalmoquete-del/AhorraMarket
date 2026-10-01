@@ -8,6 +8,12 @@ export function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
 
+  // Canal global de actividad: el centro de notificaciones escucha todos los
+  // mensajes de operación sin acoplar los módulos CRUD entre sí.
+  document.dispatchEvent(new CustomEvent("app:notification", {
+    detail: { message: String(message || ""), timestamp: Date.now() }
+  }));
+
   window.clearTimeout(showToast.timeoutId);
   showToast.timeoutId = window.setTimeout(() => {
     toast.classList.remove("show");
@@ -17,7 +23,6 @@ export function showToast(message) {
 export function openModal(id) {
   document.getElementById(id)?.classList.add("open");
 }
-
 export function closeModal(id) {
   document.getElementById(id)?.classList.remove("open");
 }
@@ -32,7 +37,6 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem(THEME_STORAGE_KEY, theme);
 }
-
 export function initThemeToggle() {
   const toggle = document.getElementById("themeToggle");
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "light";
@@ -43,14 +47,12 @@ export function initThemeToggle() {
     applyTheme(current === "light" ? "dark" : "light");
   });
 }
-
 export function initSidebarToggle() {
   const toggle = document.getElementById("sidebarToggle");
   const scrim = document.getElementById("sidebarScrim");
   if (!toggle) return;
 
   const closeSidebar = () => document.body.classList.remove("nav-open");
-
   toggle.addEventListener("click", () => document.body.classList.toggle("nav-open"));
   scrim?.addEventListener("click", closeSidebar);
   document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", closeSidebar));
@@ -58,7 +60,6 @@ export function initSidebarToggle() {
     if (event.key === "Escape") closeSidebar();
   });
 }
-
 export function initPasswordToggle() {
   const button = document.getElementById("togglePassword");
   const input = document.getElementById("password");
@@ -74,7 +75,6 @@ export function initPasswordToggle() {
 export function initSearchShortcut() {
   const search = document.getElementById("globalSearch");
   if (!search) return;
-
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
@@ -87,7 +87,6 @@ export function initSearchShortcut() {
 export function initForgotLink() {
   const link = document.getElementById("forgotLink");
   const message = document.getElementById("loginMessage");
-
   link?.addEventListener("click", (event) => {
     event.preventDefault();
     if (message) {
