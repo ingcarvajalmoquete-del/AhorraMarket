@@ -1,0 +1,958 @@
+--- a/backend/public/src/js/modules/notificationsModule.js	2026-10-01 04:42:59.740152926 +0000
++++ b/backend/public/src/js/modules/notificationsModule.js	2026-10-01 04:42:14.729886987 +0000
+@@ -1,59 +1,245 @@
+-import { productService } from "../services/productService.js";
+-import { saleService } from "../services/saleService.js";
+-import { formatCurrency } from "../utils/formatters.js";
+-import { escapeHtml } from "../utils/validators.js";
+-
+-async function buildNotifications() {
+-  const items = [];
+-
+-  const products = await productService.getAll();
+-  products.filter((product) => product.stock <= 10).slice(0, 3).forEach((product) => {
+-    items.push({
+-      title: `Stock bajo: ${escapeHtml(product.name)}`,
+-      text: `Quedan ${product.stock} unidades disponibles.`,
+-      tone: "amber"
+-    });
+-  });
+-
+-  const sales = await saleService.getAll();
+-  const lastSale = sales[0];
+-  if (lastSale) {
+-    items.push({
+-      title: `Venta registrada #${lastSale.id}`,
+-      text: `Total ${formatCurrency(lastSale.total)}.`,
+-      tone: "green"
+-    });
++const STORAGE_KEY = "ahorra_market_activity_notifications_v3";
++const MAX_ITEMS = 60;
++
++const ENTITY_MAP = [
++  ["producto", "Productos"],
++  ["cliente", "Clientes"],
++  ["empleado", "Empleados"],
++  ["usuario", "Usuarios"],
++  ["venta", "Ventas"],
++  ["gasto", "Control de gastos"],
++  ["inventario", "Inventario"],
++  ["reporte", "Reportes"],
++  ["caja", "Caja"],
++];
++
++const ACTIONS = [
++  { key: "created", words: ["creado", "creada", "registrado", "registrada", "agregado", "agregada", "activado", "activada"] },
++  { key: "updated", words: ["actualizado", "actualizada", "editado", "editada", "modificado", "modificada"] },
++  { key: "deleted", words: ["eliminado", "eliminada", "borrado", "borrada", "desactivado", "desactivada"] },
++  { key: "warning", words: ["stock bajo", "agotado", "insuficiente", "no valido", "no válida", "no valida", "error", "obligatorios", "permisos"] },
++];
++
++const ACTION_META = {
++  created: { title: "Registro creado", tone: "success", icon: "✓" },
++  updated: { title: "Registro actualizado", tone: "update", icon: "↻" },
++  deleted: { title: "Registro eliminado", tone: "danger", icon: "×" },
++  warning: { title: "Aviso del sistema", tone: "warning", icon: "!" },
++  info: { title: "Actividad del sistema", tone: "info", icon: "•" },
++};
++
++let notifications = loadNotifications();
++let currentPanel = null;
++let currentDot = null;
++
++function loadNotifications() {
++  try {
++    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
++    if (!Array.isArray(raw)) return [];
++    return raw
++      .filter((item) => item && item.id && item.timestamp)
++      .slice(0, MAX_ITEMS);
++  } catch {
++    return [];
+   }
++}
+ 
+-  if (items.length === 0) {
+-    items.push({ title: "Todo en orden", text: "No tienes notificaciones nuevas por ahora.", tone: "green" });
++function persist() {
++  try {
++    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.slice(0, MAX_ITEMS)));
++  } catch {
++    // El centro sigue funcionando aunque el navegador bloquee localStorage.
+   }
++}
+ 
+-  return items;
++function escapeHtml(value) {
++  const div = document.createElement("div");
++  div.textContent = String(value ?? "");
++  return div.innerHTML;
+ }
+ 
+-async function renderNotifications(panel) {
+-  const items = await buildNotifications();
++function classify(message) {
++  const text = String(message || "").trim();
++  const lower = text.toLowerCase();
++
++  const action = ACTIONS.find((item) =>
++    item.words.some((word) => lower.includes(word))
++  );
++  const entity = ENTITY_MAP.find(([word]) => lower.includes(word));
++  const meta = ACTION_META[action?.key || "info"];
++
++  let title = meta.title;
++  let module = "Sistema";
++
++  if (entity) {
++    module = entity[1];
++    title = `${meta.title} · ${module}`;
++  }
++
++  return {
++    title,
++    text,
++    module,
++    tone: meta.tone,
++    icon: meta.icon,
++  };
++}
+ 
+-  panel.innerHTML = `
+-    <div class="notif-head"><strong>Notificaciones</strong></div>
+-    <div class="notif-list">
+-      ${items.map((item) => `
+-        <div class="notif-item ${item.tone}">
+-          <span></span>
+-          <div><b>${item.title}</b><small>${item.text}</small></div>
++function relativeTime(timestamp) {
++  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
++
++  if (seconds < 10) return "Ahora mismo";
++  if (seconds < 60) return `Hace ${seconds} s`;
++
++  const minutes = Math.floor(seconds / 60);
++  if (minutes < 60) return `Hace ${minutes} min`;
++
++  const hours = Math.floor(minutes / 60);
++  if (hours < 24) return `Hace ${hours} h`;
++
++  return new Date(timestamp).toLocaleDateString("es-DO", {
++    day: "2-digit",
++    month: "short",
++  });
++}
++
++function unreadCount() {
++  return notifications.filter((item) => !item.read).length;
++}
++
++function updateBadge(dot) {
++  const unread = unreadCount();
++  if (!dot) return;
++
++  dot.classList.toggle("seen", unread === 0);
++  dot.classList.toggle("has-notifications", unread > 0);
++  dot.dataset.count = unread > 99 ? "99+" : String(unread);
++  dot.setAttribute("aria-label", unread ? `${unread} notificaciones pendientes` : "Sin notificaciones pendientes");
++}
++
++function render(panel, dot = currentDot) {
++  currentPanel = panel;
++  currentDot = dot;
++
++  updateBadge(dot);
++
++  const unread = unreadCount();
++
++  const list = notifications.length
++    ? notifications.map((item) => `
++        <button
++          type="button"
++          class="rukada-notif-item ${item.read ? "is-read" : "is-unread"}"
++          data-notif-id="${escapeHtml(item.id)}"
++          aria-label="${escapeHtml(item.title)}"
++        >
++          <span class="rukada-notif-icon ${escapeHtml(item.tone)}">${escapeHtml(item.icon)}</span>
++          <span class="rukada-notif-body">
++            <strong>${escapeHtml(item.title)}</strong>
++            <small>${escapeHtml(item.text)}</small>
++            <em>${escapeHtml(relativeTime(item.timestamp))} · ${escapeHtml(item.module)}</em>
++          </span>
++          ${item.read ? "" : '<i class="rukada-notif-unread" aria-hidden="true"></i>'}
++        </button>
++      `).join("")
++    : `
++        <div class="rukada-notif-empty">
++          <span>✓</span>
++          <strong>Todo en orden</strong>
++          <small>Las acciones realizadas aparecerán aquí.</small>
+         </div>
+-      `).join("")}
++      `;
++
++  panel.innerHTML = `
++    <div class="rukada-notif-head">
++      <div>
++        <strong>Notificaciones</strong>
++        <small>${unread ? `${unread} pendiente${unread === 1 ? "" : "s"}` : "Actividad reciente"}</small>
++      </div>
++      <button type="button" data-notif-action="read-all" ${unread ? "" : "disabled"}>
++        Marcar todo leído
++      </button>
++    </div>
++
++    <div class="rukada-notif-list">${list}</div>
++
++    <div class="rukada-notif-foot">
++      <span>${notifications.length} actividad${notifications.length === 1 ? "" : "es"}</span>
++      <button type="button" data-notif-action="clear" ${notifications.length ? "" : "disabled"}>
++        Limpiar historial
++      </button>
+     </div>
+   `;
+ }
+ 
++function addNotification(message, timestamp = Date.now()) {
++  const itemData = classify(message);
++  if (!itemData.text) return;
++
++  const previous = notifications[0];
++
++  // Evita duplicados accidentales de una misma operación.
++  if (
++    previous &&
++    previous.text === itemData.text &&
++    timestamp - previous.timestamp < 800
++  ) {
++    return;
++  }
++
++  notifications.unshift({
++    id: `${timestamp}-${Math.random().toString(36).slice(2, 9)}`,
++    timestamp,
++    read: false,
++    ...itemData,
++  });
++
++  notifications = notifications.slice(0, MAX_ITEMS);
++  persist();
++
++  if (currentPanel) render(currentPanel, currentDot);
++}
++
++function markAsRead(id) {
++  const item = notifications.find((notification) => notification.id === id);
++  if (!item || item.read) return;
++
++  item.read = true;
++  persist();
++  render(currentPanel, currentDot);
++}
++
++function markAllAsRead() {
++  let changed = false;
++
++  notifications.forEach((item) => {
++    if (!item.read) {
++      item.read = true;
++      changed = true;
++    }
++  });
++
++  if (changed) persist();
++  render(currentPanel, currentDot);
++}
++
++function clearHistory() {
++  notifications = [];
++  persist();
++  render(currentPanel, currentDot);
++}
++
+ export function initNotificationsModule() {
+   const button = document.getElementById("notificationBtn");
+   const panel = document.getElementById("notificationPanel");
+   const dot = document.getElementById("notificationDot");
++
+   if (!button || !panel) return;
+ 
++  currentPanel = panel;
++  currentDot = dot;
++  updateBadge(dot);
++
+   const close = () => {
+     panel.classList.remove("open");
+     button.setAttribute("aria-expanded", "false");
+@@ -61,19 +247,49 @@
+ 
+   button.addEventListener("click", (event) => {
+     event.stopPropagation();
++
+     const willOpen = !panel.classList.contains("open");
+-    panel.classList.toggle("open", willOpen);
+-    button.setAttribute("aria-expanded", String(willOpen));
+ 
+     if (willOpen) {
+-      renderNotifications(panel);
+-      dot?.classList.add("seen");
++      render(panel, dot);
++      panel.classList.add("open");
++    } else {
++      close();
++    }
++
++    button.setAttribute("aria-expanded", String(willOpen));
++  });
++
++  panel.addEventListener("click", (event) => {
++    event.stopPropagation();
++
++    const actionButton = event.target.closest("[data-notif-action]");
++    if (actionButton) {
++      const action = actionButton.dataset.notifAction;
++      if (action === "read-all") markAllAsRead();
++      if (action === "clear") clearHistory();
++      return;
+     }
++
++    const item = event.target.closest("[data-notif-id]");
++    if (item) markAsRead(item.dataset.notifId);
+   });
+ 
+-  panel.addEventListener("click", (event) => event.stopPropagation());
+   document.addEventListener("click", close);
++
+   document.addEventListener("keydown", (event) => {
+     if (event.key === "Escape") close();
+   });
++
++  // Canal único para TODOS los módulos CRUD.
++  // Los módulos siguen dependiendo solamente de showToast().
++  document.addEventListener("app:notification", (event) => {
++    const detail = event.detail || {};
++    addNotification(detail.message, detail.timestamp || Date.now());
++  });
++
++  // Refresca las etiquetas "Hace X min" mientras el panel está abierto.
++  window.setInterval(() => {
++    if (panel.classList.contains("open")) render(panel, dot);
++  }, 30000);
+ }
+--- a/backend/public/src/js/modules/uiModule.js	2026-10-01 04:42:59.740380935 +0000
++++ b/backend/public/src/js/modules/uiModule.js	2026-10-01 04:42:24.902740711 +0000
+@@ -2,6 +2,16 @@
+ const TOAST_DURATION_MS = 3200;
+ 
+ export function showToast(message) {
++  // Un único canal de actividad para todos los módulos.
++  // El módulo de notificaciones escucha este evento sin acoplarse a
++  // productos, clientes, empleados, ventas, gastos, etc.
++  document.dispatchEvent(new CustomEvent("app:notification", {
++    detail: {
++      message: String(message || ""),
++      timestamp: Date.now()
++    }
++  }));
++
+   const toast = document.getElementById("toast");
+   if (!toast) return;
+ 
+--- a/backend/public/src/css/styles.css	2026-10-01 04:42:59.739289481 +0000
++++ b/backend/public/src/css/styles.css	2026-10-01 04:42:50.538029505 +0000
+@@ -148,6 +148,7 @@
+     box-shadow:0 8px 16px -8px rgba(29,43,128,.7);
+ }
+ .brand-mark svg{width:21px;height:21px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
++.brand-mark img{width:100%;height:100%;display:block;object-fit:cover;border-radius:11px}
+ .sidebar-brand strong{
+     display:block;
+     font-family:Poppins,Inter,sans-serif;
+@@ -324,37 +325,228 @@
+ }
+ .api-status.offline .api-plug{box-shadow:0 0 0 3px rgba(214,59,59,.14)}
+ 
+-/* Notificaciones --------------------------------------------------------- */
++/* Centro de notificaciones · patrón visual profesional inspirado en Rukada */
+ .notif-wrap{position:relative}
+-.notification-button i{transition:opacity .16s}
+-.notification-button i.seen{opacity:0}
++
++.notification-button{position:relative}
++.notification-button i{
++    position:absolute;
++    top:7px;
++    right:7px;
++    width:8px;
++    height:8px;
++    border-radius:50%;
++    background:#ef4444;
++    border:2px solid var(--surface);
++    transition:opacity .18s,transform .18s;
++}
++.notification-button i.seen{opacity:0;transform:scale(.7)}
++.notification-button i.has-notifications{opacity:1}
++.notification-button i.has-notifications:after{
++    content:attr(data-count);
++    position:absolute;
++    left:7px;
++    bottom:2px;
++    min-width:15px;
++    height:15px;
++    padding:0 4px;
++    border-radius:20px;
++    background:#ef4444;
++    color:#fff;
++    font:700 8px/15px Inter,sans-serif;
++    text-align:center;
++    box-shadow:0 2px 7px rgba(239,68,68,.35);
++}
+ 
+ .notif-panel{
+-    position:absolute;top:calc(100% + 10px);right:0;z-index:70;
+-    width:300px;max-height:360px;overflow-y:auto;
+-    background:var(--surface);border:1px solid var(--line);
+-    border-radius:var(--r-lg);box-shadow:var(--sh-lg);
+-    padding:6px;
+-    opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none;
+-    transition:.16s var(--ease);
++    position:absolute;
++    top:calc(100% + 12px);
++    right:-10px;
++    z-index:200;
++    width:min(390px,calc(100vw - 28px));
++    max-height:none;
++    overflow:hidden;
++    padding:0;
++    background:var(--surface);
++    border:1px solid var(--line);
++    border-radius:16px;
++    box-shadow:0 24px 60px rgba(15,23,42,.18);
++    opacity:0;
++    transform:translateY(-8px) scale(.985);
++    pointer-events:none;
++    transition:.2s var(--ease);
+ }
+ .notif-panel.open{opacity:1;transform:none;pointer-events:auto}
+-.notif-head{padding:10px 12px 8px;font-size:12.5px;color:var(--ink)}
+-.notif-list{display:flex;flex-direction:column;gap:2px}
+-.notif-item{
+-    display:flex;align-items:flex-start;gap:10px;
+-    padding:9px 10px;border-radius:var(--r-sm);
+-}
+-.notif-item:hover{background:var(--line-2)}
+-.notif-item span{
+-    width:8px;height:8px;flex:none;border-radius:50%;margin-top:5px;
++
++.rukada-notif-head{
++    display:flex;
++    align-items:center;
++    justify-content:space-between;
++    gap:12px;
++    padding:16px 17px;
++    border-bottom:1px solid var(--line);
++    background:var(--surface);
++}
++.rukada-notif-head>div{min-width:0}
++.rukada-notif-head strong{
++    display:block;
++    font-size:14px;
++    color:var(--ink);
++    font-weight:700;
++}
++.rukada-notif-head small{
++    display:block;
++    margin-top:2px;
++    color:var(--muted);
++    font-size:10.5px;
++}
++.rukada-notif-head button,
++.rukada-notif-foot button{
++    border:0;
++    background:none;
++    color:var(--g-600);
++    font:600 10.5px Inter,sans-serif;
++    cursor:pointer;
++    padding:4px;
++    white-space:nowrap;
++}
++.rukada-notif-head button:hover,
++.rukada-notif-foot button:hover{text-decoration:underline}
++.rukada-notif-head button:disabled,
++.rukada-notif-foot button:disabled{opacity:.45;cursor:default;text-decoration:none}
++
++.rukada-notif-list{
++    max-height:360px;
++    overflow-y:auto;
++    padding:5px 0;
++}
++.rukada-notif-list::-webkit-scrollbar{width:6px}
++.rukada-notif-list::-webkit-scrollbar-thumb{
++    background:var(--line);
++    border-radius:20px;
++}
++
++.rukada-notif-item{
++    position:relative;
++    width:100%;
++    display:flex;
++    align-items:flex-start;
++    gap:11px;
++    text-align:left;
++    border:0;
++    border-bottom:1px solid var(--line-2);
++    background:transparent;
++    padding:12px 15px;
++    cursor:pointer;
++    color:var(--ink);
++    transition:.16s;
++}
++.rukada-notif-item:hover{background:var(--g-50)}
++.rukada-notif-item.is-read{opacity:.68}
++.rukada-notif-item:focus-visible{
++    outline:2px solid var(--g-500);
++    outline-offset:-2px;
++}
++
++.rukada-notif-icon{
++    width:42px;
++    height:42px;
++    flex:none;
++    border-radius:50%;
++    display:grid;
++    place-items:center;
++    font-weight:800;
++    font-size:17px;
++}
++.rukada-notif-icon.success{background:rgba(22,163,74,.12);color:#16a34a}
++.rukada-notif-icon.update{background:rgba(37,99,235,.12);color:#2563eb}
++.rukada-notif-icon.danger{background:rgba(220,38,38,.12);color:#dc2626}
++.rukada-notif-icon.warning{background:rgba(245,158,11,.14);color:#d97706}
++.rukada-notif-icon.info{background:var(--g-50);color:var(--g-600)}
++
++.rukada-notif-body{
++    min-width:0;
++    display:flex;
++    flex-direction:column;
++    gap:2px;
++    padding-top:1px;
++}
++.rukada-notif-body strong{
++    font-size:12px;
++    line-height:1.35;
++    color:var(--ink);
++    font-weight:700;
++}
++.rukada-notif-body small{
++    font-size:11px;
++    line-height:1.45;
++    color:var(--ink-2);
++    white-space:normal;
++}
++.rukada-notif-body em{
++    font-size:10px;
++    color:var(--muted-2);
++    font-style:normal;
++    margin-top:2px;
++}
++
++.rukada-notif-unread{
++    width:7px;
++    height:7px;
++    flex:none;
++    border-radius:50%;
+     background:var(--g-500);
++    margin:6px 2px 0 auto;
++    box-shadow:0 0 0 3px var(--g-50);
+ }
+-.notif-item.amber span{background:var(--amber)}
+-.notif-item.green span{background:var(--g-500)}
+-.notif-item b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
+-.notif-item small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+ 
++.rukada-notif-empty{
++    display:flex;
++    flex-direction:column;
++    align-items:center;
++    justify-content:center;
++    text-align:center;
++    padding:42px 20px;
++    color:var(--muted);
++}
++.rukada-notif-empty span{
++    width:46px;
++    height:46px;
++    border-radius:50%;
++    display:grid;
++    place-items:center;
++    background:var(--g-50);
++    color:var(--g-600);
++    font-size:20px;
++    font-weight:800;
++    margin-bottom:10px;
++}
++.rukada-notif-empty strong{font-size:13px;color:var(--ink)}
++.rukada-notif-empty small{font-size:11px;margin-top:3px}
++
++.rukada-notif-foot{
++    display:flex;
++    align-items:center;
++    justify-content:space-between;
++    padding:10px 15px;
++    background:var(--line-2);
++    color:var(--muted);
++    font-size:10.5px;
++}
++
++[data-theme="dark"] .notif-panel{
++    box-shadow:0 24px 60px rgba(0,0,0,.45);
++}
++
++@media(max-width:560px){
++    .notif-panel{
++        position:fixed;
++        top:64px;
++        right:12px;
++        width:min(390px,calc(100vw - 24px));
++    }
++    .rukada-notif-list{max-height:calc(100vh - 180px)}
++}
+ .top-user{
+     display:flex;align-items:center;gap:10px;
+     padding:5px 10px 5px 5px;
+--- a/backend/public/dashboard.html	2026-10-01 04:42:59.738886831 +0000
++++ b/backend/public/dashboard.html	2026-10-01 04:42:28.755648392 +0000
+@@ -69,7 +69,9 @@
+     <aside class="sidebar" id="sidebar">
+ 
+         <div class="sidebar-brand">
+-            <div class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg></div>
++            <div class="brand-mark">
++                <img src="src/assets/images/ahorra-market-logo.png" alt="Ahorra Market">
++            </div>
+             <div>
+                 <strong>Ahorra Market</strong>
+                 <span>Gestión de tienda</span>
+--- a/backend/public/index.html	2026-10-01 04:42:59.739048472 +0000
++++ b/backend/public/index.html	2026-10-01 04:42:32.010883576 +0000
+@@ -45,9 +45,7 @@
+         <section class="login-brand">
+ 
+             <div class="brand-logo">
+-                <span class="logo-leaf">
+-                    <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 12.1a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.3L21 7H6"/></svg>
+-                </span>
++                <img class="brand-logo-image" src="src/assets/images/ahorra-market-logo.png" alt="Logo de Ahorra Market">
+                 <div class="brand-wordmark">Ahorra <em>Market</em></div>
+             </div>
+ 
+--- a/backend/public/src/css/login-pro.css	2026-10-01 04:42:59.739209101 +0000
++++ b/backend/public/src/css/login-pro.css	2026-10-01 04:42:52.967642310 +0000
+@@ -96,6 +96,15 @@
+     border:1px solid rgba(255,255,255,.22);
+     backdrop-filter:blur(6px);
+ }
++.brand-logo-image{
++    width:72px;
++    height:72px;
++    flex:none;
++    object-fit:cover;
++    border-radius:50%;
++    border:2px solid rgba(255,255,255,.72);
++    box-shadow:0 12px 30px rgba(0,0,0,.28);
++}
+ .brand-logo svg{width:30px;height:30px;stroke:#BFD7FF;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+ 
+ .brand-wordmark{
+--- a/DOCUMENTACION_AHORRA_MARKET_NOTIFICACIONES.md	2026-10-01 04:43:19.823175751 +0000
++++ b/DOCUMENTACION_AHORRA_MARKET_NOTIFICACIONES.md	2026-10-01 04:43:19.679174636 +0000
+@@ -1,74 +1,85 @@
++# Ahorra Market — Notificaciones y logo
+ 
+-## 18. Sistema de notificaciones
++## Integración realizada
+ 
+-A partir de esta actualización, Ahorra Market incorpora un sistema de notificaciones visuales integrado en el encabezado del dashboard.
++La implementación se hizo sobre el frontend que realmente sirve Express:
+ 
+-### 18.1 Arquitectura
++`backend/public/`
+ 
+-El sistema se mantiene completamente dentro de la arquitectura existente:
++No se modificó la arquitectura de rutas, controladores, servicios ni base de datos del backend.
+ 
+-- `frontend/dashboard.html` conserva el botón y contenedor del panel de notificaciones.
+-- `frontend/src/js/modules/notificationsModule.js` concentra la lógica del módulo.
+-- `frontend/src/css/styles.css` contiene los estilos globales; la nueva capa visual de notificaciones debe agregarse al final del archivo.
+-- No se agregan endpoints, tablas ni cambios en la base de datos.
+-- El módulo consume los servicios existentes de productos y ventas.
++### Centro de notificaciones
+ 
+-La inicialización continúa realizándose desde `frontend/src/js/main.js` mediante `initNotificationsModule()`.
++El módulo:
+ 
+-### 18.2 Eventos notificados
++`backend/public/src/js/modules/notificationsModule.js`
+ 
+-El módulo construye alertas a partir de información real disponible en la aplicación:
++ahora funciona como un centro de actividad global.
+ 
+-| Tipo | Condición | Ejemplo |
+-|---|---|---|
+-| Sin existencias | Producto con stock `<= 0` | “Sin existencias: Arroz 5 lb” |
+-| Stock bajo | Producto con stock entre `1` y `10` | “Stock bajo: Refresco 600ml” |
+-| Venta registrada | Existe una venta reciente | “Venta registrada #25” |
+-| Venta reciente | Existe una segunda venta disponible | “Venta reciente #24” |
+-| Estado normal | No existen alertas | “Todo en orden” |
++Los módulos existentes siguen utilizando `showToast()`. En lugar de acoplar cada módulo directamente al centro de notificaciones, `uiModule.js` emite el evento:
+ 
+-### 18.3 Comportamiento de usuario
++`app:notification`
+ 
+-El panel permite:
++El módulo de notificaciones escucha ese evento y registra la actividad.
+ 
+-1. Abrir y cerrar las notificaciones desde el icono de campana.
+-2. Mostrar un indicador de notificaciones pendientes.
+-3. Marcar una notificación individual como leída.
+-4. Marcar todas como leídas.
+-5. Actualizar manualmente las notificaciones.
+-6. Cerrar el panel haciendo clic fuera de él.
+-7. Cerrar el panel con `Escape`.
+-8. Actualizar automáticamente la información cada 2 minutos cuando la pestaña está visible.
++Esto permite capturar las operaciones exitosas que ya existen en:
+ 
+-El estado de lectura se conserva únicamente en `localStorage` del navegador. Esto evita modificar la base de datos y mantiene la implementación compatible con la arquitectura actual.
++- Productos: crear, editar y eliminar.
++- Clientes: registrar, editar y eliminar.
++- Empleados: registrar, editar y eliminar.
++- Usuarios: crear, activar/desactivar y eliminar.
++- Ventas: registrar.
++- Gastos: registrar/eliminar cuando el módulo emite el aviso.
++- Inventario: actualizar.
++- Reportes y validaciones relevantes.
+ 
+-### 18.4 Diseño visual
++## Comportamiento visual
+ 
+-La interfaz toma como referencia el patrón profesional de dropdown utilizado en Rukada: panel flotante, cabecera diferenciada, lista desplazable, iconos por estado, indicador de elementos nuevos, animación de apertura y adaptación responsive.
++El centro utiliza un patrón visual inspirado en las notificaciones profesionales de Rukada:
+ 
+-La identidad de Ahorra Market se mantiene intacta: el sistema continúa utilizando su paleta índigo, tema claro/oscuro, tipografía y componentes actuales.
++- Campana con contador de pendientes.
++- Panel desplegable.
++- Iconos y estados por tipo de operación.
++- Verde para creación/registro.
++- Azul para edición/actualización.
++- Rojo para eliminación.
++- Amarillo para avisos y errores.
++- Hora relativa.
++- Marcar una notificación individual como leída.
++- Marcar todas como leídas.
++- Limpiar historial.
++- Historial persistente mediante `localStorage`.
++- Máximo de 60 actividades.
++- Responsive y compatible con modo claro/oscuro.
+ 
+-### 18.5 Compatibilidad y seguridad
++## Logo oficial
+ 
+-El módulo utiliza:
++Se agregó el logo de Ahorra Market en:
+ 
+-- JavaScript ES Modules.
+-- Servicios existentes de `productService` y `saleService`.
+-- `escapeHtml()` para evitar insertar texto de datos del backend directamente en HTML.
+-- `Promise.allSettled()` para evitar que un fallo aislado de un servicio inutilice todo el panel.
+-- Sin dependencias nuevas.
+-- Sin cambios en Express, JWT, SQLite ni rutas REST.
++`backend/public/src/assets/images/ahorra-market-logo.png`
+ 
+-### 18.6 Archivos modificados
++Se utiliza en el encabezado lateral y en la pantalla de inicio de sesión.
+ 
+-```text
+-frontend/
+-└── src/
+-    ├── css/
+-    │   └── styles.css                  # agregar estilos de notificaciones
+-    └── js/
+-        └── modules/
+-            └── notificationsModule.js  # reemplazar implementación actual
+-```
++## Por qué no es estructura spaghetti
+ 
+-No es necesario modificar `backend/` ni `frontend/src/js/main.js`.
++Los módulos CRUD no importan directamente el centro de notificaciones. Todos utilizan el canal existente de `showToast()` y este publica un evento común.
++
++El resultado es una separación de responsabilidades:
++
++`módulo CRUD → showToast() → app:notification → notificationsModule`
++
++Esto facilita mantener el proyecto y agregar nuevas operaciones sin duplicar lógica.
++
++## Importante
++
++La confirmación nativa del navegador (`window.confirm`) que aparece al eliminar un registro no es una notificación. Esa ventana solamente confirma la acción. Después de confirmar y ejecutar correctamente la operación, el evento de actividad aparece en la campana.
++
++## Archivos principales modificados
++
++- `backend/public/src/js/modules/notificationsModule.js`
++- `backend/public/src/js/modules/uiModule.js`
++- `backend/public/src/css/styles.css`
++- `backend/public/dashboard.html`
++- `backend/public/index.html`
++- `backend/public/src/css/login-pro.css`
++- `backend/public/src/assets/images/ahorra-market-logo.png`
+--- a/INTEGRACION.md	2026-10-01 04:43:19.827175783 +0000
++++ b/INTEGRACION.md	2026-10-01 04:43:39.703331417 +0000
+@@ -1,23 +1,52 @@
+-# Integración Ahorra Market · Notificaciones Rukada
++# Ahorra Market · Integración real de notificaciones Rukada
+ 
+-1. Copia `frontend/src/assets/ahorra-market-logo.png` a la ruta equivalente de tu proyecto.
+-2. Copia `frontend/src/css/notifications-rukada.css`.
+-3. Aplica `AhorraMarket_notificaciones_rukada.patch` desde la raíz del repositorio:
+-
+-```bash
+-git apply AhorraMarket_notificaciones_rukada.patch
+-```
+-
+-El centro de notificaciones escucha el evento global `app:notification`, emitido por `showToast()`. Por ello los módulos CRUD existentes no necesitan importar el centro de notificaciones: sus mensajes de éxito se convierten automáticamente en actividad persistente.
+-
+-La implementación conserva la arquitectura actual, usa `localStorage`, limita el historial a 60 eventos y permite marcar individualmente, marcar todo como leído y limpiar el historial. El estilo toma como referencia visual la estructura de Rukada: panel desplegable, lista de altura fija/desplazable, iconos circulares, contador y estados de actividad.
+-
+-### Operaciones cubiertas
+-- Productos: crear, editar, eliminar.
+-- Clientes: registrar, editar, eliminar.
+-- Empleados: registrar, editar, eliminar.
+-- Usuarios: crear, activar/desactivar, eliminar.
+-- Ventas: registrar.
+-- Gastos: agregar y eliminar.
+-- Inventario: actualización manual.
+-- Errores y validaciones que ya usan `showToast()`.
++Esta versión ya contiene la integración en el código que Express sirve en producción:
++
++`backend/public/`
++
++## Qué se modificó
++
++- `backend/public/src/js/modules/notificationsModule.js`
++- `backend/public/src/js/modules/uiModule.js`
++- `backend/public/src/css/styles.css`
++- `backend/public/dashboard.html`
++- `backend/public/index.html`
++- `backend/public/src/css/login-pro.css`
++- `backend/public/src/assets/images/ahorra-market-logo.png`
++
++## Cómo funciona
++
++Los módulos existentes siguen usando `showToast()` después de sus operaciones.
++
++El flujo es:
++
++`CRUD → showToast() → app:notification → notificationsModule → campana`
++
++Por eso no se agregó una dependencia directa entre Productos, Clientes, Empleados, Usuarios, Ventas, Gastos e Inventario y el centro de notificaciones.
++
++## Operaciones capturadas
++
++La clasificación reconoce automáticamente mensajes de:
++
++- crear / registrar / agregar / activar
++- editar / actualizar / modificar
++- eliminar / borrar / desactivar
++- avisos, errores y validaciones
++
++El módulo identifica además el área correspondiente y la muestra como parte de la notificación.
++
++## Persistencia
++
++Las actividades se almacenan en `localStorage` del navegador, con un máximo de 60 registros. Se pueden marcar como leídas, marcar todas como leídas o limpiar el historial.
++
++## Logo
++
++El logo oficial está en:
++
++`backend/public/src/assets/images/ahorra-market-logo.png`
++
++y se muestra en el login y en el sidebar.
++
++## Nota sobre `window.confirm`
++
++La confirmación nativa que aparece al eliminar un registro es independiente del centro de notificaciones. Después de aceptar y completar la operación, el resultado aparece en la campana.
+--- a/README_APLICACION.md	2026-10-01 04:43:19.847044479 +0000
++++ b/README_APLICACION.md	2026-10-01 04:43:39.699331386 +0000
+@@ -1,35 +1,47 @@
+-# Patch — Notificaciones profesionales para Ahorra Market
++# Ahorra Market — actualización real
+ 
+-Este paquete contiene únicamente los cambios necesarios para adaptar el patrón de
+-notificaciones de Rukada a Ahorra Market sin cambiar la arquitectura.
++Este paquete contiene el proyecto actualizado, no solamente un conjunto de archivos de ejemplo.
+ 
+-## Aplicación
++## Integrado
+ 
+-1. Reemplaza:
+-   `frontend/src/js/modules/notificationsModule.js`
+-   por el archivo de este paquete.
++- Centro de notificaciones profesional inspirado en Rukada.
++- Registro automático de operaciones mediante el evento global `app:notification`.
++- Creación, edición, eliminación y avisos de los módulos existentes.
++- Contador de pendientes.
++- Marcar individual / marcar todo como leído.
++- Limpiar historial.
++- Historial persistente en el navegador.
++- Modo claro y oscuro.
++- Logo oficial de Ahorra Market en login y sidebar.
+ 
+-2. Copia el contenido de:
+-   `frontend/src/css/notifications.css.patch`
+-   al final de:
+-   `frontend/src/css/styles.css`
++## Importante
+ 
+-3. No cambies `frontend/src/js/main.js`: ya inicializa `initNotificationsModule()`.
++La aplicación que sirve Express está en:
+ 
+-4. Actualiza `DOCUMENTACION_AHORRA_MARKET.md` agregando la sección 18 incluida en
+-   `DOCUMENTACION_AHORRA_MARKET_NOTIFICACIONES.md`.
++`backend/public/`
+ 
+-## Backend
++No es necesario mover estos archivos a otra arquitectura.
+ 
+-No requiere cambios en backend, base de datos, rutas, JWT ni dependencias.
++No se modificaron las rutas, controladores, servicios ni la base de datos del backend.
+ 
+-## Resultado
++## Ejecutar
+ 
+-- Dropdown profesional de notificaciones.
+-- Alertas de stock bajo y sin existencias.
+-- Avisos de ventas recientes.
+-- Estado leído/no leído persistente en el navegador.
+-- Marcar todo como leído.
+-- Actualización manual.
+-- Refresco automático cada 2 minutos mientras la pestaña está visible.
+-- Responsive y compatible con tema claro/oscuro.
++Desde `backend`:
++
++```bash
++npm install
++npm start
++```
++
++La URL local depende del puerto configurado en `.env`.
++
++## Git
++
++Como el ZIP no incluye `.git` ni `node_modules`, si lo vas a usar sobre tu repositorio actual, copia los archivos actualizados dentro de tu carpeta del proyecto y ejecuta:
++
++```bash
++git status
++git add .
++git commit -m "feat: notificaciones profesionales y logo"
++git push origin main
++```

@@ -1,74 +1,85 @@
+# Ahorra Market — Notificaciones y logo
 
-## 18. Sistema de notificaciones
+## Integración realizada
 
-A partir de esta actualización, Ahorra Market incorpora un sistema de notificaciones visuales integrado en el encabezado del dashboard.
+La implementación se hizo sobre el frontend que realmente sirve Express:
 
-### 18.1 Arquitectura
+`backend/public/`
 
-El sistema se mantiene completamente dentro de la arquitectura existente:
+No se modificó la arquitectura de rutas, controladores, servicios ni base de datos del backend.
 
-- `frontend/dashboard.html` conserva el botón y contenedor del panel de notificaciones.
-- `frontend/src/js/modules/notificationsModule.js` concentra la lógica del módulo.
-- `frontend/src/css/styles.css` contiene los estilos globales; la nueva capa visual de notificaciones debe agregarse al final del archivo.
-- No se agregan endpoints, tablas ni cambios en la base de datos.
-- El módulo consume los servicios existentes de productos y ventas.
+### Centro de notificaciones
 
-La inicialización continúa realizándose desde `frontend/src/js/main.js` mediante `initNotificationsModule()`.
+El módulo:
 
-### 18.2 Eventos notificados
+`backend/public/src/js/modules/notificationsModule.js`
 
-El módulo construye alertas a partir de información real disponible en la aplicación:
+ahora funciona como un centro de actividad global.
 
-| Tipo | Condición | Ejemplo |
-|---|---|---|
-| Sin existencias | Producto con stock `<= 0` | “Sin existencias: Arroz 5 lb” |
-| Stock bajo | Producto con stock entre `1` y `10` | “Stock bajo: Refresco 600ml” |
-| Venta registrada | Existe una venta reciente | “Venta registrada #25” |
-| Venta reciente | Existe una segunda venta disponible | “Venta reciente #24” |
-| Estado normal | No existen alertas | “Todo en orden” |
+Los módulos existentes siguen utilizando `showToast()`. En lugar de acoplar cada módulo directamente al centro de notificaciones, `uiModule.js` emite el evento:
 
-### 18.3 Comportamiento de usuario
+`app:notification`
 
-El panel permite:
+El módulo de notificaciones escucha ese evento y registra la actividad.
 
-1. Abrir y cerrar las notificaciones desde el icono de campana.
-2. Mostrar un indicador de notificaciones pendientes.
-3. Marcar una notificación individual como leída.
-4. Marcar todas como leídas.
-5. Actualizar manualmente las notificaciones.
-6. Cerrar el panel haciendo clic fuera de él.
-7. Cerrar el panel con `Escape`.
-8. Actualizar automáticamente la información cada 2 minutos cuando la pestaña está visible.
+Esto permite capturar las operaciones exitosas que ya existen en:
 
-El estado de lectura se conserva únicamente en `localStorage` del navegador. Esto evita modificar la base de datos y mantiene la implementación compatible con la arquitectura actual.
+- Productos: crear, editar y eliminar.
+- Clientes: registrar, editar y eliminar.
+- Empleados: registrar, editar y eliminar.
+- Usuarios: crear, activar/desactivar y eliminar.
+- Ventas: registrar.
+- Gastos: registrar/eliminar cuando el módulo emite el aviso.
+- Inventario: actualizar.
+- Reportes y validaciones relevantes.
 
-### 18.4 Diseño visual
+## Comportamiento visual
 
-La interfaz toma como referencia el patrón profesional de dropdown utilizado en Rukada: panel flotante, cabecera diferenciada, lista desplazable, iconos por estado, indicador de elementos nuevos, animación de apertura y adaptación responsive.
+El centro utiliza un patrón visual inspirado en las notificaciones profesionales de Rukada:
 
-La identidad de Ahorra Market se mantiene intacta: el sistema continúa utilizando su paleta índigo, tema claro/oscuro, tipografía y componentes actuales.
+- Campana con contador de pendientes.
+- Panel desplegable.
+- Iconos y estados por tipo de operación.
+- Verde para creación/registro.
+- Azul para edición/actualización.
+- Rojo para eliminación.
+- Amarillo para avisos y errores.
+- Hora relativa.
+- Marcar una notificación individual como leída.
+- Marcar todas como leídas.
+- Limpiar historial.
+- Historial persistente mediante `localStorage`.
+- Máximo de 60 actividades.
+- Responsive y compatible con modo claro/oscuro.
 
-### 18.5 Compatibilidad y seguridad
+## Logo oficial
 
-El módulo utiliza:
+Se agregó el logo de Ahorra Market en:
 
-- JavaScript ES Modules.
-- Servicios existentes de `productService` y `saleService`.
-- `escapeHtml()` para evitar insertar texto de datos del backend directamente en HTML.
-- `Promise.allSettled()` para evitar que un fallo aislado de un servicio inutilice todo el panel.
-- Sin dependencias nuevas.
-- Sin cambios en Express, JWT, SQLite ni rutas REST.
+`backend/public/src/assets/images/ahorra-market-logo.png`
 
-### 18.6 Archivos modificados
+Se utiliza en el encabezado lateral y en la pantalla de inicio de sesión.
 
-```text
-frontend/
-└── src/
-    ├── css/
-    │   └── styles.css                  # agregar estilos de notificaciones
-    └── js/
-        └── modules/
-            └── notificationsModule.js  # reemplazar implementación actual
-```
+## Por qué no es estructura spaghetti
 
-No es necesario modificar `backend/` ni `frontend/src/js/main.js`.
+Los módulos CRUD no importan directamente el centro de notificaciones. Todos utilizan el canal existente de `showToast()` y este publica un evento común.
+
+El resultado es una separación de responsabilidades:
+
+`módulo CRUD → showToast() → app:notification → notificationsModule`
+
+Esto facilita mantener el proyecto y agregar nuevas operaciones sin duplicar lógica.
+
+## Importante
+
+La confirmación nativa del navegador (`window.confirm`) que aparece al eliminar un registro no es una notificación. Esa ventana solamente confirma la acción. Después de confirmar y ejecutar correctamente la operación, el evento de actividad aparece en la campana.
+
+## Archivos principales modificados
+
+- `backend/public/src/js/modules/notificationsModule.js`
+- `backend/public/src/js/modules/uiModule.js`
+- `backend/public/src/css/styles.css`
+- `backend/public/dashboard.html`
+- `backend/public/index.html`
+- `backend/public/src/css/login-pro.css`
+- `backend/public/src/assets/images/ahorra-market-logo.png`

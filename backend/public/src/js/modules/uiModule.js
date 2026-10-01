@@ -2,6 +2,16 @@ const THEME_STORAGE_KEY = "chatbox_theme";
 const TOAST_DURATION_MS = 3200;
 
 export function showToast(message) {
+  // Un único canal de actividad para todos los módulos.
+  // El módulo de notificaciones escucha este evento sin acoplarse a
+  // productos, clientes, empleados, ventas, gastos, etc.
+  document.dispatchEvent(new CustomEvent("app:notification", {
+    detail: {
+      message: String(message || ""),
+      timestamp: Date.now()
+    }
+  }));
+
   const toast = document.getElementById("toast");
   if (!toast) return;
 
