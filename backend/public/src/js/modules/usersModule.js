@@ -2,7 +2,7 @@ import { userService } from "../services/userService.js";
 import { getSession } from "../services/authService.js";
 import { escapeHtml, isRequired } from "../utils/validators.js";
 import { getValue } from "../utils/dom.js";
-import { openModal, closeModal, showToast } from "./uiModule.js";
+import { openModal, closeModal, showToast, confirmAction } from "./uiModule.js";
 
 function renderUserRow(user, currentUserId) {
   const roleLabel = user.role === "admin" ? "Administrador" : "Empleado";
@@ -74,21 +74,29 @@ async function handleToggleUser(id) {
   const session = getSession();
   if (id === session?.id) return showToast("No puedes desactivar tu propio usuario.");
 
-  const user = await userService.toggle(id);
-  await loadUsers();
-  showToast(user.active ? "Usuario activado." : "Usuario desactivado.");
+  try {
+    const user = await userService.toggle(id);
+    await loadUsers();
+    showToast(user.active ? "Usuario activado." : "Usuario desactivado.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function handleDeleteUser(id, username) {
   const session = getSession();
   if (id === session?.id) return showToast("No puedes eliminar tu propio usuario.");
 
-  const confirmed = window.confirm(`¿Eliminar al usuario "${username}"?`);
+  const confirmed = await confirmAction(`¿Eliminar al usuario "${username}"?`);
   if (!confirmed) return;
 
-  await userService.remove(id);
-  await loadUsers();
-  showToast("Usuario eliminado correctamente.");
+  try {
+    await userService.remove(id);
+    await loadUsers();
+    showToast("Usuario eliminado correctamente.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function initUserTableActions() {

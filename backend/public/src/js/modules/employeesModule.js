@@ -1,7 +1,7 @@
 import { employeeService } from "../services/employeeService.js";
 import { escapeHtml, isRequired } from "../utils/validators.js";
 import { setValue, setText, getValue } from "../utils/dom.js";
-import { openModal, closeModal, showToast } from "./uiModule.js";
+import { openModal, closeModal, showToast, confirmAction } from "./uiModule.js";
 
 let cachedEmployees = [];
 
@@ -81,10 +81,15 @@ async function handleEmployeeForm(event) {
 }
 
 async function handleDeleteEmployee(id) {
-  if (!window.confirm("¿Eliminar este empleado?")) return;
-  await employeeService.remove(id);
-  await loadEmployees();
-  showToast("Empleado eliminado.");
+  if (!(await confirmAction("¿Eliminar este empleado?"))) return;
+
+  try {
+    await employeeService.remove(id);
+    await loadEmployees();
+    showToast("Empleado eliminado.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function initEmployeeTableActions() {

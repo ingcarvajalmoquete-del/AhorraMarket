@@ -1,7 +1,7 @@
 import { clientService } from "../services/clientService.js";
 import { escapeHtml, isRequired, isValidEmail } from "../utils/validators.js";
 import { setValue, setText, getValue } from "../utils/dom.js";
-import { openModal, closeModal, showToast } from "./uiModule.js";
+import { openModal, closeModal, showToast, confirmAction } from "./uiModule.js";
 
 let cachedClients = [];
 
@@ -74,10 +74,15 @@ async function handleClientForm(event) {
 }
 
 async function handleDeleteClient(id) {
-  if (!window.confirm("¿Eliminar este cliente?")) return;
-  await clientService.remove(id);
-  await loadClients();
-  showToast("Cliente eliminado.");
+  if (!(await confirmAction("¿Eliminar este cliente?"))) return;
+
+  try {
+    await clientService.remove(id);
+    await loadClients();
+    showToast("Cliente eliminado.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function initClientTableActions() {

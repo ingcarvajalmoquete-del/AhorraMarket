@@ -2,7 +2,7 @@ import { productService } from "../services/productService.js";
 import { formatCurrency } from "../utils/formatters.js";
 import { escapeHtml, isRequired, isPositiveNumber } from "../utils/validators.js";
 import { setValue, setText, getValue } from "../utils/dom.js";
-import { openModal, closeModal, showToast } from "./uiModule.js";
+import { openModal, closeModal, showToast, confirmAction } from "./uiModule.js";
 
 let cachedProducts = [];
 
@@ -146,12 +146,16 @@ async function handleDeleteProduct(id) {
   const product = cachedProducts.find((item) => item.id === id);
   if (!product) return;
 
-  const confirmed = window.confirm(`¿Deseas eliminar "${product.name}"?`);
+  const confirmed = await confirmAction(`¿Deseas eliminar "${product.name}"?`);
   if (!confirmed) return;
 
-  await productService.remove(id);
-  await loadProducts();
-  showToast("Producto eliminado correctamente.");
+  try {
+    await productService.remove(id);
+    await loadProducts();
+    showToast("Producto eliminado correctamente.");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function initProductTableActions() {

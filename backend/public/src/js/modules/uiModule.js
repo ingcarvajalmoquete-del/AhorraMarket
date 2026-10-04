@@ -92,6 +92,25 @@ export function showToast(message, meta = {}) {
 
 export { NOTIFICATION_EVENT };
 
+// Confirmation dialog (same SweetAlert2 pattern used by DanielZar before deleting).
+export async function confirmAction(message = "¿Estás seguro de esta acción?", confirmText = "Sí, eliminar") {
+  if (!window.Swal?.fire) return window.confirm(message);
+
+  const result = await window.Swal.fire({
+    title: "¿Estás seguro?",
+    text: message,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#3085d6",
+    confirmButtonText: confirmText,
+    cancelButtonText: "Cancelar",
+    customClass: { popup: "ahorra-swal-popup" }
+  });
+
+  return result.isConfirmed;
+}
+
 export function openModal(id) {
   document.getElementById(id)?.classList.add("open");
 }

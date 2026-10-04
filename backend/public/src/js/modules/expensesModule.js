@@ -2,7 +2,7 @@ import { expenseService } from "../services/expenseService.js";
 import { formatCurrency } from "../utils/formatters.js";
 import { escapeHtml } from "../utils/validators.js";
 import { setText, setValue, getValue } from "../utils/dom.js";
-import { showToast } from "./uiModule.js";
+import { showToast, confirmAction } from "./uiModule.js";
 
 const BALANCE_STORAGE_KEY = "chatbox_initial_balance";
 const CHART_WIDTH = 360;
@@ -173,9 +173,15 @@ function initExpenseListActions() {
     const button = event.target.closest('[data-action="delete-expense"]');
     if (!button) return;
 
-    await expenseService.remove(Number(button.dataset.id));
-    await refreshExpenses();
-    showToast("Gasto eliminado correctamente.");
+    if (!(await confirmAction("¿Eliminar este gasto?"))) return;
+
+    try {
+      await expenseService.remove(Number(button.dataset.id));
+      await refreshExpenses();
+      showToast("Gasto eliminado correctamente.");
+    } catch (error) {
+      showToast(error.message);
+    }
   });
 }
 
