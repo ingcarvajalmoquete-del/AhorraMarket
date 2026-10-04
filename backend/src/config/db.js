@@ -21,7 +21,7 @@ function createSchema(db) {
       username TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('admin','employee')),
+      role TEXT NOT NULL CHECK(role IN ('admin','employee','cashier')),
       active INTEGER NOT NULL DEFAULT 1
     );
 
@@ -77,6 +77,33 @@ function createSchema(db) {
   `);
 }
 
+/**
+ * Bases de datos creadas antes del rol "cashier" tienen un CHECK que solo
+ * permite admin/employee. SQLite no permite alterarlo, asi que se reconstruye
+ * la tabla conservando todos los datos (procedimiento oficial de SQLite).
+ */
+function migrateUsersRoleCheck(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get();
+  if (!row || !row.sql || row.sql.includes("'cashier'")) return;
+
+  db.pragma("foreign_keys = OFF");
+  db.exec(`
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin','employee','cashier')),
+      active INTEGER NOT NULL DEFAULT 1
+    );
+    INSERT INTO users_new (id, username, name, password_hash, role, active)
+      SELECT id, username, name, password_hash, role, active FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+  `);
+  db.pragma("foreign_keys = ON");
+}
+
 function seedUsers(db) {
   const count = db.prepare("SELECT COUNT(*) AS total FROM users").get().total;
   if (count > 0) return;
@@ -98,6 +125,13 @@ function seedUsers(db) {
     name: "Empleado General",
     passwordHash: bcrypt.hashSync("empleado123", SALT_ROUNDS),
     role: "employee"
+  });
+
+  insert.run({
+    username: "cajero",
+    name: "Cajero Principal",
+    passwordHash: bcrypt.hashSync("cajero123", SALT_ROUNDS),
+    role: "cashier"
   });
 }
 
@@ -142,6 +176,7 @@ async function initDb() {
   wrappedDb.pragma("foreign_keys = ON");
 
   createSchema(wrappedDb);
+  migrateUsersRoleCheck(wrappedDb);
   seedUsers(wrappedDb);
   seedProducts(wrappedDb);
 

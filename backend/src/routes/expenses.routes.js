@@ -2,11 +2,11 @@ const { Router } = require("express");
 const { body } = require("express-validator");
 const expenseController = require("../controllers/expenseController");
 const validateRequest = require("../middlewares/validateRequest");
-const { requireAuth } = require("../middlewares/authGuard");
+const { requireAuth, blockCashier } = require("../middlewares/authGuard");
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, blockCashier);
 
 router.get("/", expenseController.getExpenses);
 

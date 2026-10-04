@@ -16,7 +16,7 @@ router.post(
     body("username").trim().notEmpty().withMessage("El usuario es obligatorio."),
     body("name").trim().notEmpty().withMessage("El nombre es obligatorio."),
     body("password").isLength({ min: 6 }).withMessage("La contrasena debe tener al menos 6 caracteres."),
-    body("role").isIn(["admin", "employee"]).withMessage("El rol debe ser admin o employee.")
+    body("role").isIn(["admin", "employee", "cashier"]).withMessage("El rol debe ser admin, employee o cashier.")
   ],
   validateRequest,
   userController.createUser

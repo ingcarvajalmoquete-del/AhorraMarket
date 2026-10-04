@@ -31,4 +31,12 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+/** El cajero solo puede usar la caja (ventas) y consultar productos para vender. */
+function blockCashier(req, res, next) {
+  if (req.user?.role === "cashier") {
+    return next(new HttpError(HTTP_STATUS.FORBIDDEN, "Tu rol de cajero solo tiene acceso a la caja."));
+  }
+  return next();
+}
+
+module.exports = { requireAuth, requireAdmin, blockCashier };

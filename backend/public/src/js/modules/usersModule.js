@@ -2,10 +2,11 @@ import { userService } from "../services/userService.js";
 import { getSession } from "../services/authService.js";
 import { escapeHtml, isRequired } from "../utils/validators.js";
 import { getValue } from "../utils/dom.js";
+import { getRoleLabel } from "../utils/permissions.js";
 import { openModal, closeModal, showToast, confirmAction } from "./uiModule.js";
 
 function renderUserRow(user, currentUserId) {
-  const roleLabel = user.role === "admin" ? "Administrador" : "Empleado";
+  const roleLabel = getRoleLabel(user.role);
   const statusLabel = user.active ? "Activo" : "Inactivo";
   const statusClass = user.active ? "available" : "out";
   const disableSelf = user.id === currentUserId ? "disabled" : "";

@@ -3,6 +3,10 @@ import { formatCurrency, formatDate, formatDateTime, toInputDate } from "../util
 import { escapeHtml } from "../utils/validators.js";
 import { setText, getValue, setValue } from "../utils/dom.js";
 import { showToast } from "./uiModule.js";
+import { buildSalesPdf, buildSalesXlsx, downloadBlob } from "../utils/reportExport.js";
+
+// Último reporte generado (lo que se exporta a PDF / Excel).
+let lastReport = null;
 
 function parseDateOnly(value) {
   const [year, month, day] = value.split("-").map(Number);
@@ -146,24 +150,71 @@ export async function generateReport() {
   const fromValue = getValue("reportStart");
   const toValue = getValue("reportEnd");
 
-  if (fromValue && toValue && parseDateOnly(fromValue) > parseDateOnly(toValue)) {
-    showToast("La fecha inicial no puede ser mayor que la final.");
-    return;
+  if (!fromValue || !toValue) {
+    showToast("Selecciona la fecha inicial y la final.");
+    return null;
   }
 
-  const report = await reportService.getSalesReport(fromValue, toValue);
-  renderSummary(report, fromValue, toValue);
-  renderDetailTable(report.sales);
+  if (parseDateOnly(fromValue) > parseDateOnly(toValue)) {
+    showToast("La fecha inicial no puede ser mayor que la final.");
+    return null;
+  }
 
-  const days = buildDayRange(fromValue, toValue);
-  const values = valuesForDays(days, report.dailyTotals);
-  renderLineChart(days, values);
-  renderBarChart(days, values);
+  try {
+    const report = await reportService.getSalesReport(fromValue, toValue);
+    lastReport = { report, fromValue, toValue };
+
+    renderSummary(report, fromValue, toValue);
+    renderDetailTable(report.sales);
+
+    const days = buildDayRange(fromValue, toValue);
+    const values = valuesForDays(days, report.dailyTotals);
+    renderLineChart(days, values);
+    renderBarChart(days, values);
+    return lastReport;
+  } catch (error) {
+    showToast(error.message || "No se pudo generar el reporte.");
+    return null;
+  }
+}
+
+function exportContext(current) {
+  const { report, fromValue, toValue } = current;
+  return {
+    report,
+    rangeLabel: `${formatDate(fromValue)} - ${formatDate(toValue)}`,
+    generatedAt: formatDateTime(new Date()),
+    formatDateTime,
+    formatCurrency
+  };
+}
+
+async function handleExport(kind) {
+  // Siempre exporta lo que indican las fechas actuales de los filtros.
+  const current = await generateReport();
+  if (!current) return;
+
+  try {
+    const context = exportContext(current);
+    const suffix = `${current.fromValue}_${current.toValue}`;
+
+    if (kind === "pdf") {
+      downloadBlob(buildSalesPdf(context), `reporte-ventas_${suffix}.pdf`);
+      showToast("Reporte PDF generado correctamente.");
+    } else {
+      downloadBlob(buildSalesXlsx(context), `reporte-ventas_${suffix}.xlsx`);
+      showToast("Reporte Excel generado correctamente.");
+    }
+  } catch (error) {
+    showToast(`No se pudo exportar el reporte: ${error.message}`);
+  }
 }
 
 export function initReportsModule() {
   initReportDates();
   document.getElementById("generateReportBtn")?.addEventListener("click", generateReport);
+  document.getElementById("exportReportPdf")?.addEventListener("click", () => handleExport("pdf"));
+  document.getElementById("exportReportExcel")?.addEventListener("click", () => handleExport("excel"));
   document.querySelectorAll("[data-report-preset]").forEach((button) => {
     button.addEventListener("click", () => applyPreset(button.dataset.reportPreset));
   });

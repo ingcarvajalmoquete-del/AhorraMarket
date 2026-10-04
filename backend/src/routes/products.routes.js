@@ -2,7 +2,7 @@ const { Router } = require("express");
 const { body } = require("express-validator");
 const productController = require("../controllers/productController");
 const validateRequest = require("../middlewares/validateRequest");
-const { requireAuth } = require("../middlewares/authGuard");
+const { requireAuth, blockCashier } = require("../middlewares/authGuard");
 
 const router = Router();
 
@@ -16,10 +16,10 @@ const productRules = [
 router.use(requireAuth);
 
 router.get("/", productController.getProducts);
-router.get("/inventory-summary", productController.getInventorySummary);
+router.get("/inventory-summary", blockCashier, productController.getInventorySummary);
 router.get("/:id", productController.getProductById);
-router.post("/", productRules, validateRequest, productController.createProduct);
-router.put("/:id", productRules, validateRequest, productController.updateProduct);
-router.delete("/:id", productController.deleteProduct);
+router.post("/", blockCashier, productRules, validateRequest, productController.createProduct);
+router.put("/:id", blockCashier, productRules, validateRequest, productController.updateProduct);
+router.delete("/:id", blockCashier, productController.deleteProduct);
 
 module.exports = router;

@@ -14,6 +14,7 @@ import { initInventoryModule } from "./modules/inventoryModule.js";
 import { initReportsModule } from "./modules/reportsModule.js";
 import { initNotificationsModule } from "./modules/notificationsModule.js";
 import { initChatModule } from "./modules/chatModule.js";
+import { getDefaultSection, isRestricted } from "./utils/permissions.js";
 
 function initLoginPage() {
   initThemeToggle();
@@ -37,20 +38,26 @@ function initDashboardPage() {
   initNavigation(session, () => {});
   initHeroCarousel();
   initNotificationsModule();
-  initChatModule();
 
-  initDashboardModule();
-  initProductsModule();
-  initSalesModule();
-  initExpensesModule();
-  initClientsModule();
-  initEmployeesModule();
-  initInventoryModule();
-  initReportsModule();
+  if (isRestricted(session.role)) {
+    // Rol restringido (cajero): solo se inicializa lo necesario para la caja.
+    initProductsModule();
+    initSalesModule();
+  } else {
+    initChatModule();
+    initDashboardModule();
+    initProductsModule();
+    initSalesModule();
+    initExpensesModule();
+    initClientsModule();
+    initEmployeesModule();
+    initInventoryModule();
+    initReportsModule();
 
-  if (session.role === "admin") initUsersModule();
+    if (session.role === "admin") initUsersModule();
+  }
 
-  navigateTo("dashboard");
+  navigateTo(getDefaultSection(session.role));
 }
 
 document.addEventListener("DOMContentLoaded", () => {

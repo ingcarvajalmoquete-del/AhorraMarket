@@ -2,7 +2,7 @@ const { Router } = require("express");
 const { body } = require("express-validator");
 const employeeController = require("../controllers/employeeController");
 const validateRequest = require("../middlewares/validateRequest");
-const { requireAuth } = require("../middlewares/authGuard");
+const { requireAuth, blockCashier } = require("../middlewares/authGuard");
 
 const router = Router();
 
@@ -11,7 +11,7 @@ const employeeRules = [
   body("position").optional({ checkFalsy: true }).trim()
 ];
 
-router.use(requireAuth);
+router.use(requireAuth, blockCashier);
 
 router.get("/", employeeController.getEmployees);
 router.post("/", employeeRules, validateRequest, employeeController.createEmployee);

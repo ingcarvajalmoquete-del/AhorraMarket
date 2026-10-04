@@ -1,5 +1,6 @@
 import { loginRequest, getSession, clearSession } from "../services/authService.js";
 import { showToast } from "./uiModule.js";
+import { getRoleLabel, canAccess, isRestricted } from "../utils/permissions.js";
 
 export function requireSession() {
   const session = getSession();
@@ -19,7 +20,7 @@ export function logout() {
 
 function renderUserHeader(session) {
   const displayName = session.name;
-  const roleLabel = session.role === "admin" ? "Administrador" : "Empleado";
+  const roleLabel = getRoleLabel(session.role);
   const initial = displayName.charAt(0).toUpperCase();
 
   ["currentUserName", "topUserName"].forEach((id) => {
@@ -39,6 +40,35 @@ function renderUserHeader(session) {
 
   if (session.role !== "admin") {
     document.getElementById("usersNav")?.style.setProperty("display", "none");
+  }
+
+  applyRoleRestrictions(session);
+}
+
+// Oculta del menú todo lo que el rol no puede usar (p. ej. el cajero solo ve la caja).
+function applyRoleRestrictions(session) {
+  if (!isRestricted(session.role)) return;
+
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    if (!canAccess(session.role, item.dataset.section)) item.style.setProperty("display", "none");
+  });
+
+  // Títulos de grupo ("Administración", etc.) que se quedaron sin opciones.
+  document.querySelectorAll(".nav-title").forEach((title) => {
+    let next = title.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains("nav-title")) {
+      if (next.classList.contains("nav-item") && next.style.display !== "none") hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    if (!hasVisible) title.style.setProperty("display", "none");
+  });
+
+  if (session.role === "cashier") {
+    const salesNav = document.querySelector('.nav-item[data-section="sales"]');
+    const label = [...(salesNav?.childNodes || [])].reverse().find((node) => node.nodeType === Node.TEXT_NODE);
+    if (label) label.textContent = "Caja";
+    document.getElementById("chatToggle")?.style.setProperty("display", "none");
   }
 }
 
